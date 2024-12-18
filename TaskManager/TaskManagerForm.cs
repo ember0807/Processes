@@ -13,12 +13,98 @@ namespace TaskManager
 {
 	public partial class FormTaskManager : Form
 	{
+		
+		private string _searchText = ""; // Для хранения текущего введенного текста
+		private void FormTaskManager_KeyDown(object sender, KeyEventArgs e)
+		{
+			// Убедитесь, что фокус установлен на текстовом поле
+			if (e.KeyCode == Keys.Back)
+			{
+				if (_searchText.Length > 0)
+				{
+					_searchText = _searchText.Substring(0, _searchText.Length - 1);
+					PerformSearch(); // Выполняем поиск сразу после изменения текста
+				}
+			}
+			else if (e.KeyCode == Keys.Escape)
+			{
+				_searchText = ""; // сброс
+				ResetFilter(); // Сброс фильтра
+			}
+			else if (e.KeyCode == Keys.Enter)
+			{
+				PerformSearch(); // Выполняем поиск
+			}
+			else if (e.KeyCode != Keys.Shift && e.KeyCode != Keys.Control && e.KeyCode != Keys.Alt)
+			{
+				_searchText += e.KeyCode.ToString().Length == 1 ? e.KeyCode.ToString().ToLower() : "";
+				PerformSearch(); // выполняем поиск после ввода текста
+			}
+		}
+		private void FormTaskManager_KeyPress(object sender, KeyPressEventArgs e)
+		{
+			// Игнорируем управляющие клавиши
+			if (char.IsControl(e.KeyChar)) return;
+
+			_searchText += e.KeyChar.ToString().ToLower();
+			PerformSearch(); // Выполняем поиск
+		}
+		private void PerformSearch()
+		{
+			if (dataGridView1.Rows.Count == 0) return; // Проверка, есть ли вообще строки
+
+			try
+			{
+				string searchTextLower = _searchText.ToLower();
+
+				foreach (DataGridViewRow row in dataGridView1.Rows)
+				{
+					bool containsSearchText = false;
+
+					if (row.Cells[1].Value != null)
+					{
+						containsSearchText = row.Cells[1].Value.ToString().ToLower().Contains(searchTextLower);
+					}
+
+					row.Visible = containsSearchText; // Скрываем или показываем строки в зависимости от условия
+				}
+			}
+			catch (ArgumentException ex)
+			{
+				MessageBox.Show("Ошибка: " + ex.Message); // Дополнительный вывод для отладки
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Произошла ошибка: " + ex.Message); // Общая обработка ошибок
+			}
+		}
+
+		private void ResetFilter()
+		{
+			_searchText = ""; // Сбрасываем текст поиска
+			foreach (DataGridViewRow row in dataGridView1.Rows)
+			{
+				row.Visible = true; // Показываем все строки
+			}
+			PerformSearch();  // Обновляем видимость строк, сбрасывая фильтр
+		}
+		private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
+		{
+			// Сбросить фильтрацию при клике на ячейку
+			ResetFilter();
+		}
 		public FormTaskManager()
 		{
 			InitializeComponent();
+			this.KeyPreview = true; // Позволяет формы получать события клавиатуры 
 			InitializeContextMenu();
 			dataGridView1.Dock = DockStyle.Fill; // Заполнение DataGridView
 			dataGridView1.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+			dataGridView1.ReadOnly = true;
+			dataGridView1.AutoGenerateColumns = false; // Отключение авто генирации
+													   // Подписка на событие KeyDown
+			this.KeyDown += new KeyEventHandler(FormTaskManager_KeyDown);
+			this.KeyPress += new KeyPressEventHandler(FormTaskManager_KeyPress);
 		}
 		private void InitializeContextMenu()
 		{
@@ -69,7 +155,7 @@ namespace TaskManager
 				MessageBox.Show("Выберите процесс для завершения.");
 			}
 		}
-
+		
 		public void LoadProcesses()
 		{
 			// Сохраняем текущее положение первой отображаемой строки и горизонтальную прокрутку
@@ -109,7 +195,7 @@ namespace TaskManager
 					try
 					{   // Обновляем существующие строки
 						Process process = processes[i];
-						long memorySize = process.WorkingSet64 / (1024*1024); // переход из байтов в килобайты
+						long memorySize = process.WorkingSet64 / (1024 * 1024); // переход из байтов в мб
 						DateTime startTime = process.StartTime; // время запуска процесса
 
 						// Обновление данных в строке
@@ -177,12 +263,19 @@ namespace TaskManager
 		}
 
 
+		
 		private void FormTaskManager_Load(object sender, EventArgs e)
 		{
-
-			LoadProcesses();
+			try
+			{
+				LoadProcesses();
+				this.ActiveControl = this; // Установка фокуса на форму
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Ошибка при загрузке: " + ex.Message);
+			}
 		}
-
 
 		private void dataGridView1_MouseDown(object sender, MouseEventArgs e)
 		{
@@ -226,6 +319,7 @@ namespace TaskManager
 				{
 					Process.GetProcessById(processId).Kill();
 					LoadProcesses(); // Обновить список процессов
+					ResetFilter(); // Сбросить фильтрацию
 				}
 				catch (Exception ex)
 				{
@@ -233,10 +327,10 @@ namespace TaskManager
 				}
 			}
 		}
-		private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
-		{
+		//private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
+		//{
 
-		}
+		//}
 
 		private void timer1_Tick(object sender, EventArgs e)
 		{
@@ -253,6 +347,7 @@ namespace TaskManager
 		{
 			StartProcess();
 		}
+		// Обработка запуска процесса
 		private void StartProcess()
 		{
 			// Открываем диалог для ввода имени процесса
@@ -265,6 +360,7 @@ namespace TaskManager
 					// Запускаем новый процесс
 					Process.Start(processName);
 					LoadProcesses(); // Обновляем список процессов после старта
+					ResetFilter(); // Очищаем фильтр после запуска
 				}
 				catch (Exception ex)
 				{
@@ -274,7 +370,7 @@ namespace TaskManager
 		}
 		public static class Prompt
 		{
-			private static List<string> previousEntries = new List<string>(); // Хранить последние введенные значения
+			private static List<string> previousEntries = new List<string>(); // для хранения ввода
 
 			public static string ShowDialog(string text, string caption)
 			{
